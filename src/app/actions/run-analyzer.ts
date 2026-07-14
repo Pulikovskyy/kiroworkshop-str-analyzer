@@ -1,0 +1,148 @@
+"use server";
+
+import { withTransaction } from "@/app/lib/db";
+import { runAllRules } from "@/app/lib/engine";
+import { generateAlertNarrative, generateFallbackNarrative, NarrativeContext } from "@/app/lib/openai";
+import { AnalyzerResult } from "@/types";
+
+const MAX_NARRATIVES = 20;
+
+export async function runAnalyzer(): Promise<AnalyzerResult> {
+  return withTransaction(async (client) => {
+    // 1. Run all rules
+    const ruleResults = await runAllRules(client);
+    const totalAlerts = ruleResults.reduce((sum, r) => sum + r.alertsCreated, 0);
+
+    // 2. Generate narratives for new alerts (up to MAX_NARRATIVES)
+    if (totalAlerts > 0) {
+      const newAlerts = await client.query(
+        `SELECT a.alert_id, a.txn_id, a.rule_id,
+                t.customer_id, t.account_no, t.txn_date, t.txn_type, t.txn_amount, t.currency, t.channel,
+                c.full_name, c.customer_type,
+                r.rule_name, r.description, r.risk_level, r.scenario_ref, r.target_case
+         FROM alerts a
+         JOIN transactions t ON t.txn_id = a.txn_id
+         JOIN customers c ON c.customer_id = t.customer_id
+         JOIN rules r ON r.rule_id = a.rule_id
+         WHERE a.llm_narrative IS NULL
+         ORDER BY a.alert_id
+         LIMIT $1`,
+        [MAX_NARRATIVES + 50] // get extra for fallback assignment
+      );
+
+      let narrativeCount = 0;
+      for (const row of newAlerts.rows) {
+        const ctx: NarrativeContext = {
+          transaction: {
+            txn_id: row.txn_id,
+            customer_id: row.customer_id,
+            customer_name: row.full_name,
+            account_no: row.account_no,
+            txn_date: row.txn_date instanceof Date ? row.txn_date.toISOString().split("T")[0] : row.txn_date,
+            txn_type: row.txn_type,
+            txn_amount: parseFloat(row.txn_amount),
+            currency: row.currency,
+            channel: row.channel,
+            customer_type: row.customer_type,
+          },
+          rule: {
+            rule_name: row.rule_name,
+            description: row.description,
+            risk_level: row.risk_level,
+            scenario_ref: row.scenario_ref,
+            target_case: row.target_case,
+          },
+        };
+
+        let narrative: string;
+        if (narrativeCount < MAX_NARRATIVES) {
+          narrative = await generateAlertNarrative(ctx);
+          narrativeCount++;
+        } else {
+          narrative = generateFallbackNarrative(ctx);
+        }
+
+        await client.query(
+          `UPDATE alerts SET llm_narrative = $1 WHERE alert_id = $2`,
+          [narrative, row.alert_id]
+        );
+      }
+    }
+
+    // 3. Auto-create cases for new alerts
+    let casesCreated = 0;
+    if (totalAlerts > 0) {
+      const unlinkedAlerts = await client.query(
+        `SELECT a.alert_id, t.customer_id
+         FROM alerts a
+         JOIN transactions t ON t.txn_id = a.txn_id
+         LEFT JOIN case_alerts ca ON ca.alert_id = a.alert_id
+         WHERE ca.case_id IS NULL`
+      );
+
+      const customerAlerts = new Map<string, number[]>();
+      for (const row of unlinkedAlerts.rows) {
+        const existing = customerAlerts.get(row.customer_id) || [];
+        existing.push(row.alert_id);
+        customerAlerts.set(row.customer_id, existing);
+      }
+
+      for (const [customerId, alertIds] of customerAlerts) {
+        // Find existing open case
+        const existingCase = await client.query(
+          `SELECT case_id FROM cases WHERE customer_id = $1 AND status IN ('OPEN', 'UNDER_REVIEW') LIMIT 1`,
+          [customerId]
+        );
+
+        let caseId: number;
+        if (existingCase.rows.length > 0) {
+          caseId = existingCase.rows[0].case_id;
+        } else {
+          // Generate case ref
+          const year = new Date().getFullYear();
+          const countResult = await client.query("SELECT count(*) FROM cases");
+          const nextNum = parseInt(countResult.rows[0].count) + 1;
+          const caseRef = `CASE-${year}-${String(nextNum).padStart(6, "0")}`;
+
+          const newCase = await client.query(
+            `INSERT INTO cases (case_ref, customer_id, status, priority, summary)
+             VALUES ($1, $2, 'OPEN', 'HIGH', $3)
+             RETURNING case_id`,
+            [caseRef, customerId, `Auto-generated: ${alertIds.length} alert(s) detected`]
+          );
+          caseId = newCase.rows[0].case_id;
+          casesCreated++;
+        }
+
+        // Link alerts to case
+        for (const alertId of alertIds) {
+          await client.query(
+            `INSERT INTO case_alerts (case_id, alert_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [caseId, alertId]
+          );
+        }
+      }
+    }
+
+    // 4. Audit log
+    await client.query(
+      `INSERT INTO audit_log (actor, action, detail) VALUES ($1, $2, $3)`,
+      [
+        "system",
+        "RUN_EXECUTED",
+        JSON.stringify({
+          rulesEvaluated: ruleResults.length,
+          alertsCreated: totalAlerts,
+          casesCreated,
+          ruleBreakdown: ruleResults.filter((r) => r.alertsCreated > 0),
+        }),
+      ]
+    );
+
+    return {
+      rulesEvaluated: ruleResults.length,
+      alertsCreated: totalAlerts,
+      casesCreated,
+    };
+  });
+}
