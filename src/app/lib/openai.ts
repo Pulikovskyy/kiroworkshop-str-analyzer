@@ -39,18 +39,31 @@ export async function generateAlertNarrative(
     
     const openai = getOpenAIClient();
     
-    const systemPrompt = `You are a financial crime analyst assistant for a Philippine bank. Given a flagged transaction and the rule that triggered it, write a concise 2-3 sentence explanation of why this transaction is suspicious. Use plain language suitable for a compliance officer. Reference specific amounts, patterns, and AMLC thresholds.`;
+    const systemPrompt = `You are a senior financial crime investigator narrating suspicious activity findings for a Philippine bank's compliance team. Write your analysis as a short narrative story — as if you're briefing a room of investigators.
 
-    const userPrompt = `Rule: "${ctx.rule.rule_name}" (${ctx.rule.risk_level})
-${ctx.rule.scenario_ref ? `Scenario: ${ctx.rule.scenario_ref} — ${ctx.rule.description}` : ""}
-${ctx.rule.target_case ? `Target case: ${ctx.rule.target_case}` : ""}
+Your style:
+- Begin by setting the scene: who is the customer, what happened, when
+- Build tension by revealing the suspicious pattern or anomaly
+- Conclude with what this pattern typically indicates and why it warrants investigation
+- Use specific PHP amounts, dates, and thresholds from AMLC regulations
+- Write 3-5 sentences in a flowing narrative style — not bullet points
+- Tone: professional but engaging, like a detective recounting a case
 
-Transaction: ${ctx.transaction.customer_name} (${ctx.transaction.customer_type})
-Account: ${ctx.transaction.account_no} | Date: ${ctx.transaction.txn_date}
-Type: ${ctx.transaction.txn_type} | Amount: ${ctx.transaction.currency} ${ctx.transaction.txn_amount.toLocaleString()}
-Channel: ${ctx.transaction.channel || "N/A"}
+Example style: "On July 10th, an account belonging to Elena Bautista — dormant for over seven months — suddenly received a PHP 750,000 cash deposit at the Makati branch. No prior activity explains this influx. The amount exceeds the AMLC's PHP 500,000 covered transaction threshold, and the dormancy pattern is consistent with mule account activation seen in cyber-heist laundering schemes."`;
 
-Explain why this is suspicious.`;
+    const userPrompt = `Rule triggered: "${ctx.rule.rule_name}" (${ctx.rule.risk_level} severity)
+${ctx.rule.scenario_ref ? `Detection scenario: ${ctx.rule.scenario_ref} — ${ctx.rule.description}` : ""}
+${ctx.rule.target_case ? `Typical case type: ${ctx.rule.target_case}` : ""}
+
+The subject:
+- Customer: ${ctx.transaction.customer_name} (${ctx.transaction.customer_type})
+- Account: ${ctx.transaction.account_no}
+- Transaction date: ${ctx.transaction.txn_date}
+- Transaction type: ${ctx.transaction.txn_type}
+- Amount: ${ctx.transaction.currency} ${ctx.transaction.txn_amount.toLocaleString()}
+- Channel: ${ctx.transaction.channel || "N/A"}
+
+Narrate this suspicious finding as a story for the investigation team.`;
 
     const response = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
@@ -58,8 +71,8 @@ Explain why this is suspicious.`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      max_tokens: 250,
-      temperature: 0.3,
+      max_tokens: 400,
+      temperature: 0.5,
     });
 
     const narrative = response.choices[0]?.message?.content;
