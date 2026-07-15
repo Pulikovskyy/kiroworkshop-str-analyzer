@@ -2,9 +2,7 @@ import { Pool } from "pg";
 import * as fs from "fs";
 import * as path from "path";
 
-const DATABASE_URL =
-  "postgresql://neondb_owner:npg_1GJb7NSVjukB@ep-snowy-band-atvdopsj-pooler.c-9.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require";
-
+const DATABASE_URL = "";
 async function seed() {
   const pool = new Pool({ connectionString: DATABASE_URL });
   const client = await pool.connect();
