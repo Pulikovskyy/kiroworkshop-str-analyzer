@@ -1,8 +1,12 @@
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "sk-placeholder",
-});
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey === "sk-placeholder" || apiKey.startsWith("sk-proj-placeholder")) {
+    throw new Error("OPENAI_API_KEY is not configured — set it in .env.local");
+  }
+  return new OpenAI({ apiKey });
+}
 
 export interface NarrativeContext {
   transaction: {
@@ -30,6 +34,11 @@ export async function generateAlertNarrative(
   ctx: NarrativeContext
 ): Promise<string> {
   try {
+    console.log(`[OpenAI] Generating narrative for alert on txn ${ctx.transaction.txn_id} (rule: ${ctx.rule.rule_name})`);
+    console.log(`[OpenAI] Using API key: ${process.env.OPENAI_API_KEY?.slice(0, 12)}...${process.env.OPENAI_API_KEY?.slice(-4)}`);
+    
+    const openai = getOpenAIClient();
+    
     const systemPrompt = `You are a financial crime analyst assistant for a Philippine bank. Given a flagged transaction and the rule that triggered it, write a concise 2-3 sentence explanation of why this transaction is suspicious. Use plain language suitable for a compliance officer. Reference specific amounts, patterns, and AMLC thresholds.`;
 
     const userPrompt = `Rule: "${ctx.rule.rule_name}" (${ctx.rule.risk_level})
@@ -43,7 +52,7 @@ Channel: ${ctx.transaction.channel || "N/A"}
 
 Explain why this is suspicious.`;
 
-    const response = await client.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
@@ -53,11 +62,17 @@ Explain why this is suspicious.`;
       temperature: 0.3,
     });
 
-    return (
-      response.choices[0]?.message?.content ??
-      generateFallbackNarrative(ctx)
-    );
-  } catch {
+    const narrative = response.choices[0]?.message?.content;
+    if (narrative) {
+      console.log(`[OpenAI] ✅ Generated narrative (${narrative.length} chars)`);
+      return narrative;
+    }
+    
+    console.log(`[OpenAI] ⚠️ Empty response, using fallback`);
+    return generateFallbackNarrative(ctx);
+  } catch (err: unknown) {
+    const error = err as Error;
+    console.error(`[OpenAI] ❌ Error generating narrative:`, error.message || error);
     return generateFallbackNarrative(ctx);
   }
 }
