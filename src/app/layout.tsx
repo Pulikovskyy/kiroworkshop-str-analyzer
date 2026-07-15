@@ -13,6 +13,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Every page reads live data from Postgres; there is no database available
+// at build time, so nothing in the app can be statically prerendered.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "STR Analyzer",
   description: "Suspicious Transaction Report Analyzer — AML Detection Platform",
