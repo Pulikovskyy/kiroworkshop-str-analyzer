@@ -3,18 +3,18 @@
 import { withTransaction } from "@/app/lib/db";
 import { runAllRules } from "@/app/lib/engine";
 import { generateAlertNarrative, generateFallbackNarrative, NarrativeContext } from "@/app/lib/openai";
+import { runCtrAutoTag } from "@/app/actions/ctr";
 import { AnalyzerResult } from "@/types";
 
 const MAX_NARRATIVES = 20;
 
 export async function runAnalyzer(): Promise<AnalyzerResult> {
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     // 1. Run all rules
     const ruleResults = await runAllRules(client);
     const totalAlerts = ruleResults.reduce((sum, r) => sum + r.alertsCreated, 0);
 
     // 2. Generate narratives for new alerts (up to MAX_NARRATIVES)
-    // Also regenerate for alerts that only have fallback narratives
     const alertsNeedingNarrative = await client.query(
       `SELECT a.alert_id, a.txn_id, a.rule_id, a.llm_narrative,
               t.customer_id, t.account_no, t.txn_date, t.txn_type, t.txn_amount, t.currency, t.channel,
@@ -92,7 +92,6 @@ export async function runAnalyzer(): Promise<AnalyzerResult> {
       }
 
       for (const [customerId, alertIds] of customerAlerts) {
-        // Find existing open case
         const existingCase = await client.query(
           `SELECT case_id FROM cases WHERE customer_id = $1 AND status IN ('OPEN', 'UNDER_REVIEW') LIMIT 1`,
           [customerId]
@@ -102,7 +101,6 @@ export async function runAnalyzer(): Promise<AnalyzerResult> {
         if (existingCase.rows.length > 0) {
           caseId = existingCase.rows[0].case_id;
         } else {
-          // Generate case ref
           const year = new Date().getFullYear();
           const countResult = await client.query("SELECT count(*) FROM cases");
           const nextNum = parseInt(countResult.rows[0].count) + 1;
@@ -118,7 +116,6 @@ export async function runAnalyzer(): Promise<AnalyzerResult> {
           casesCreated++;
         }
 
-        // Link alerts to case
         for (const alertId of alertIds) {
           await client.query(
             `INSERT INTO case_alerts (case_id, alert_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
@@ -149,4 +146,15 @@ export async function runAnalyzer(): Promise<AnalyzerResult> {
       casesCreated,
     };
   });
+
+  // 5. Auto-tag CTRs (runs in its own transaction after the main analysis)
+  // Credits >= 500K are mandatory covered transactions under AMLA
+  try {
+    const ctrResult = await runCtrAutoTag();
+    console.log(`[Analyzer] CTR auto-tag: ${ctrResult.ctrsFiled} new CTRs filed`);
+  } catch (err) {
+    console.error("[Analyzer] CTR auto-tag failed:", err);
+  }
+
+  return result;
 }

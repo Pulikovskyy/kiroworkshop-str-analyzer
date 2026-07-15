@@ -31,8 +31,8 @@ export function RulesClient({ rules }: { rules: Rule[] }) {
 
   return (
     <div>
-      {/* Run Analyzer Button */}
-      <div className="mb-6 flex items-center gap-4">
+      {/* Action Buttons */}
+      <div className="mb-6 flex flex-wrap items-center gap-4">
         <button
           onClick={handleRunAnalyzer}
           disabled={isPending}

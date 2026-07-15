@@ -10,6 +10,7 @@ const navItems = [
   { href: "/alerts", label: "Alerts", icon: "🔔" },
   { href: "/suspicious", label: "Suspicious", icon: "⚠️" },
   { href: "/str-register", label: "STR Register", icon: "📋" },
+  { href: "/ctr-register", label: "CTR Register", icon: "🏦" },
   { href: "/cases", label: "Cases", icon: "📁" },
   { href: "/audit", label: "Audit Log", icon: "📝" },
 ];

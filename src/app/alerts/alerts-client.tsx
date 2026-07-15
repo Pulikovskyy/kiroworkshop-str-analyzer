@@ -61,6 +61,9 @@ export function AlertsClient({ alerts }: { alerts: any[] }) {
               <td className="px-4 py-3 font-mono text-xs">{alert.alert_id}</td>
               <td className="px-4 py-3 max-w-xs">
                 <div className="font-medium truncate">{alert.rule_name}</div>
+                {alert.scenario_ref && (
+                  <div className="text-xs text-gray-500 mt-0.5">{alert.scenario_ref}</div>
+                )}
               </td>
               <td className="px-4 py-3">
                 <div>{alert.full_name}</div>

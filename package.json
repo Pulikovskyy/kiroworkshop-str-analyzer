@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

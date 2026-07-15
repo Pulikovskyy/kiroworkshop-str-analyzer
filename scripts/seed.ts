@@ -3,8 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 const DATABASE_URL =
-  process.env.DATABASE_URL ||
-  "postgresql://postgres:postgres@localhost:5432/str_analyzer";
+  "postgresql://neondb_owner:npg_1GJb7NSVjukB@ep-snowy-band-atvdopsj-pooler.c-9.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require";
 
 async function seed() {
   const pool = new Pool({ connectionString: DATABASE_URL });

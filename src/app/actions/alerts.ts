@@ -36,7 +36,7 @@ export async function getAlerts(filters?: AlertFilters): Promise<Alert[]> {
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const result = await client.query(
-      `SELECT a.*, r.rule_name, t.txn_amount, t.customer_id, c.full_name
+      `SELECT a.*, r.rule_name, r.scenario_ref, t.txn_amount, t.customer_id, c.full_name
        FROM alerts a
        JOIN rules r ON r.rule_id = a.rule_id
        JOIN transactions t ON t.txn_id = a.txn_id

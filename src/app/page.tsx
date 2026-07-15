@@ -1,4 +1,7 @@
 import { withClient } from "@/app/lib/db";
+import { ResetButton } from "./dashboard-client";
+
+export const dynamic = "force-dynamic";
 
 async function getDashboardStats() {
   return withClient(async (client) => {
@@ -41,14 +44,16 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
-          STR Analyzer — AML Detection Platform Overview
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
+            STR Analyzer — AML Detection Platform Overview
+          </p>
+        </div>
+        <ResetButton />
       </div>
 
-      {/* Stat Tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {tiles.map((tile) => (
           <div
@@ -66,11 +71,10 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {/* Placeholder for severity chart */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">System Status</h2>
         <p className="text-gray-500 dark:text-gray-400">
-          Run the analyzer from the Rules page to generate alerts. The dashboard will show alert distribution by severity once alerts exist.
+          Run the analyzer from the Rules page to generate alerts. Use the Reset button to clear all alerts and start fresh.
         </p>
       </div>
     </div>
